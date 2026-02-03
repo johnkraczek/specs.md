@@ -107,7 +107,6 @@ Stage only files created/modified during the current work item.
     <substep>Work item ID and title</substep>
     <substep>Run ID for traceability</substep>
     <substep>File count summary</substep>
-    <substep>Co-Authored-By trailer for FIRE</substep>
 
     <commit_message_format>
       {type}({scope}): {subject}
@@ -116,8 +115,6 @@ Stage only files created/modified during the current work item.
       Run: {run_id}
 
       {files_count} file(s) changed
-
-      Co-Authored-By: Claude FIRE <noreply@fabriqa.ai>
     </commit_message_format>
   </step>
 
@@ -192,7 +189,6 @@ Stage only files created/modified during the current work item.
   Creates a git commit containing:
   - Only files from the current run (excluding .specs-fire/)
   - Conventional commit message with run ID reference
-  - Co-Authored-By trailer for FIRE attribution
 </output_artifact>
 
 <scripts>

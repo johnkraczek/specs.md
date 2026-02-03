@@ -208,9 +208,7 @@ function generateCommitMessage(workItemId, workItemTitle, intentId, runId, files
     `Work Item: ${workItemId} - ${workItemTitle}`,
     `Run: ${runId}`,
     '',
-    `${filesCount} file(s) changed`,
-    '',
-    'Co-Authored-By: Claude FIRE <noreply@fabriqa.ai>'
+    `${filesCount} file(s) changed`
   ].join('\n');
 
   return header + body;
