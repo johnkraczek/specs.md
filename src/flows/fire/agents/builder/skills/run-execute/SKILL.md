@@ -50,7 +50,7 @@ Supports both single-item and multi-item (batch/wide) runs.
       <substep>design.md → if exists, LOAD from .specs-fire/intents/{intent}/work-items/{id}-design.md</substep>
       <substep>plan.md → if exists, LOAD from .specs-fire/runs/{run-id}/plan.md (skip plan generation)</substep>
       <substep>test-report.md → if exists, tests already passed (skip to Step 6b)</substep>
-      <substep>review-report.md → if exists, review done (skip to Step 7)</substep>
+      <substep>review-report.md → if exists, review done (skip to Step 6c)</substep>
 
       <determine_resume_point>
         | Artifacts Present | Resume At |
@@ -58,7 +58,8 @@ Supports both single-item and multi-item (batch/wide) runs.
         | None | Step 3 (Generate Plan) |
         | plan.md only | Step 5 (Implementation) |
         | plan.md + test-report.md | Step 6b (Code Review) |
-        | plan.md + test-report.md + review-report.md | Step 7 (Complete Item) |
+        | plan.md + test-report.md + review-report.md | Step 6c (Commit Changes) |
+        | plan.md + test-report.md + review-report.md + commit done | Step 7 (Complete Item) |
       </determine_resume_point>
 
       <output>
@@ -84,6 +85,7 @@ Supports both single-item and multi-item (batch/wide) runs.
   <mandate>ALWAYS CREATE plan.md — Create plan BEFORE implementation starts (ALL modes)</mandate>
   <mandate>ALWAYS CREATE test-report.md — Create test report AFTER tests complete</mandate>
   <mandate>ALWAYS RUN code-review — Invoke code-review skill after tests pass</mandate>
+  <mandate>ALWAYS COMMIT AFTER EACH WORK ITEM — Atomic commits per work item for git traceability</mandate>
   <mandate>TRACK ALL FILE OPERATIONS — Every create, modify MUST be recorded</mandate>
   <mandate>NEVER skip tests — Tests are mandatory, not optional</mandate>
   <mandate>FOLLOW BROWNFIELD RULES — Read before write, match existing patterns</mandate>
@@ -98,9 +100,11 @@ Supports both single-item and multi-item (batch/wide) runs.
   | plan.md | BEFORE implementation (Step 4) | Agent using template |
   | test-report.md | AFTER tests pass (Step 6) | Agent using template |
   | review-report.md | AFTER test report (Step 6b) | code-review skill |
+  | git commit | AFTER code review (Step 6c) - ONCE PER WORK ITEM | commit-changes skill |
   | walkthrough.md | After run completes (Step 8) | walkthrough-generate skill |
 
   For batch runs: Append each work item's section to plan.md and test-report.md.
+  <critical>Git commit is performed ONCE PER WORK ITEM for traceability (atomic commits).</critical>
 </artifact_timing>
 
 <flow>
@@ -129,7 +133,7 @@ Supports both single-item and multi-item (batch/wide) runs.
   </step>
 
   <step n="2" title="Load Work Item Context">
-    <note>For batch runs, repeat steps 2-6b for each work item</note>
+    <note>For batch runs, repeat steps 2-6c for each work item</note>
 
     <action>Get current_item from state.yaml runs.active[0]</action>
     <action>Load work item from .specs-fire/intents/{intent}/work-items/{id}.md</action>
@@ -449,6 +453,48 @@ Supports both single-item and multi-item (batch/wide) runs.
     </output>
   </step>
 
+  <step n="6c" title="Commit Changes">
+    <critical>ALWAYS commit after each work item completes for git traceability.</critical>
+    <output>Committing changes for work item: {work_item_id}...</output>
+
+    <action>Invoke commit-changes skill with context:</action>
+    <code>
+      node ../commit-changes/scripts/commit-changes.cjs {rootPath} {runId} \
+        --files-created='{files_created_json}' \
+        --files-modified='{files_modified_json}' \
+        --work-item-id={work_item_id} \
+        --work-item-title="{work_item_title}" \
+        --intent-id={intent_id}
+    </code>
+
+    <check if="commit succeeds">
+      <output>
+        Changes committed successfully.
+        Commit: {commit_hash}
+      </output>
+      <action>Store commit_hash for walkthrough inclusion</action>
+    </check>
+
+    <check if="commit was skipped">
+      <check if="reason == git_not_initialized">
+        <output>
+          Git not initialized. Skipping commit.
+          To enable automatic commits, run: git init
+        </output>
+      </check>
+      <check if="reason == no_code_changes">
+        <output>No code changes to commit (only .specs-fire artifacts).</output>
+      </check>
+      <check if="reason == pre_commit_hook_failed">
+        <output>
+          Pre-commit hook failed. Commit skipped.
+          Fix issues and commit manually, or skip hooks with --no-verify
+        </output>
+      </check>
+      <note>Continue with workflow - commit failure is not fatal</note>
+    </check>
+  </step>
+
   <step n="7" title="Complete Current Work Item">
     <llm critical="true">
       <mandate>BATCH RUNS: You MUST loop until ALL items are done</mandate>
@@ -522,6 +568,7 @@ Supports both single-item and multi-item (batch/wide) runs.
   | `scripts/init-run.cjs` | Initialize run record and folder | Creates run.md with all work items |
   | `scripts/update-phase.cjs` | Update current work item's phase | `node scripts/update-phase.cjs {rootPath} {runId} {phase}` |
   | `scripts/complete-run.cjs` | Finalize run and update state | `--complete-item` or `--complete-run` |
+  | `../commit-changes/scripts/commit-changes.cjs` | Commit changes to git | `node ../commit-changes/scripts/commit-changes.cjs {rootPath} {runId} [options]` |
 
   <script name="init-run.cjs">
     ```bash
@@ -632,6 +679,7 @@ Supports both single-item and multi-item (batch/wide) runs.
 - Current item being executed
 - Files created/modified (after completion)
 - Decisions made (after completion)
+- Commit hash (if commit was successful)
 - Summary (after completion)
 </run_folder_structure>
 
@@ -646,6 +694,7 @@ Supports both single-item and multi-item (batch/wide) runs.
   <criterion>test-report.md created AFTER tests pass</criterion>
   <criterion>code-review skill invoked and completed</criterion>
   <criterion>review-report.md created</criterion>
+  <criterion>commit-changes skill invoked (skipped gracefully if git unavailable)</criterion>
   <criterion>Run completed via complete-run.cjs script</criterion>
   <criterion>walkthrough.md generated</criterion>
 </success_criteria>
